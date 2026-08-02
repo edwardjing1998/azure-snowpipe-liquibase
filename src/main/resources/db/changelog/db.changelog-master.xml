@@ -6,7 +6,12 @@
         https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
     <include
-            file="changes/003-create-billing-snowpipe.xml"
+            file="changes/001-create-landing-table.xml"
             relativeToChangelogFile="true"/>
-
+    <include
+            file="changes/002-create-csv-file-format.xml"
+            relativeToChangelogFile="true"/>
+    <include
+            file="changes/003-create-sas-stage.xml"
+            relativeToChangelogFile="true"/>
 </databaseChangeLog>

@@ -1,0 +1,64 @@
+name: 01 Deploy SAS Stage Objects
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "pom.xml"
+      - "src/main/resources/**"
+      - ".github/workflows/01-deploy-sas-stage.yml"
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  AZURE_BLOB_SAS_TOKEN: ${{ secrets.AZURE_BLOB_SAS_TOKEN }}
+  AZURE_STORAGE_ACCOUNT: ${{ vars.AZURE_STORAGE_ACCOUNT }}
+  AZURE_CONTAINER: ${{ vars.AZURE_CONTAINER }}
+  AZURE_BLOB_PREFIX: ${{ vars.AZURE_BLOB_PREFIX }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Validate configuration
+        shell: bash
+        run: |
+          test -n "$SNOWFLAKE_ACCOUNT" || { echo "Missing SNOWFLAKE_ACCOUNT"; exit 1; }
+          test -n "$SNOWFLAKE_USER" || { echo "Missing SNOWFLAKE_USER"; exit 1; }
+          test -n "$SNOWFLAKE_PASSWORD" || { echo "Missing SNOWFLAKE_PASSWORD"; exit 1; }
+          test -n "$AZURE_BLOB_SAS_TOKEN" || { echo "Missing AZURE_BLOB_SAS_TOKEN"; exit 1; }
+          test -n "$AZURE_STORAGE_ACCOUNT" || { echo "Missing AZURE_STORAGE_ACCOUNT"; exit 1; }
+          test -n "$AZURE_CONTAINER" || { echo "Missing AZURE_CONTAINER"; exit 1; }
+          test -n "$AZURE_BLOB_PREFIX" || { echo "Missing AZURE_BLOB_PREFIX"; exit 1; }
+          echo "::add-mask::$AZURE_BLOB_SAS_TOKEN"
+          echo "SNOWFLAKE_URL=jdbc:snowflake://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/?db=EDU_AI_APP&schema=WEBAPP&warehouse=GLOBAL_FINANCE_WAREHOUSE&role=ACCOUNTADMIN" >> "$GITHUB_ENV"
+
+      - name: Validate Liquibase changelog
+        run: |
+          mvn -B -ntp liquibase:validate \
+            -Dazure.storage.account="$AZURE_STORAGE_ACCOUNT" \
+            -Dazure.container="$AZURE_CONTAINER" \
+            -Dazure.blob.prefix="$AZURE_BLOB_PREFIX" \
+            -Dazure.sas.token="$AZURE_BLOB_SAS_TOKEN"
+
+      - name: Create landing table, file format, and SAS stage
+        run: |
+          mvn -B -ntp liquibase:update \
+            -Dazure.storage.account="$AZURE_STORAGE_ACCOUNT" \
+            -Dazure.container="$AZURE_CONTAINER" \
+            -Dazure.blob.prefix="$AZURE_BLOB_PREFIX" \
+            -Dazure.sas.token="$AZURE_BLOB_SAS_TOKEN"
+

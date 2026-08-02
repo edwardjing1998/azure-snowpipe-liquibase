@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="sas-001-create-bill-line-landing" author="edward">
+        <sql splitStatements="false"><![CDATA[
+CREATE TABLE IF NOT EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_SAS_LANDING (
+  BILL_LINE_ID VARCHAR,
+  BILL_ID VARCHAR,
+  BILLING_ACCOUNT_TOKEN VARCHAR,
+  PRODUCT_ID VARCHAR,
+  SERVICE_ID VARCHAR,
+  CHARGE_TYPE_CODE VARCHAR,
+  BILLING_CYCLE_START DATE,
+  BILLING_CYCLE_END DATE,
+  CHARGE_DATE DATE,
+  QUANTITY NUMBER(18,4),
+  UNIT_PRICE NUMBER(18,4),
+  CHARGE_AMOUNT NUMBER(18,2),
+  TAX_AMOUNT NUMBER(18,2),
+  CREDIT_AMOUNT NUMBER(18,2),
+  NET_AMOUNT NUMBER(18,2),
+  CURRENCY_CODE VARCHAR(3),
+  CHARGE_STATUS VARCHAR,
+  SOURCE_UPDATED_AT TIMESTAMP_NTZ,
+  SOURCE_FILENAME VARCHAR,
+  SOURCE_ROW_NUMBER NUMBER,
+  INGESTED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+)
+        ]]></sql>
+        <rollback>
+            <sql>DROP TABLE IF EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_SAS_LANDING</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

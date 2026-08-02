@@ -1,9 +1,0 @@
-# Copy to liquibase.properties only for local development. Never commit passwords.
-url=jdbc:snowflake://usbxmys-cm03603.snowflakecomputing.com/?db=EDU_AI_APP&schema=WEBAPP&warehouse=GLOBAL_FINANCE_WAREHOUSE&role=ACCOUNTADMIN
-username=YOUR_SNOWFLAKE_USER
-password=YOUR_SNOWFLAKE_PASSWORD
-driver=net.snowflake.client.jdbc.SnowflakeDriver
-changeLogFile=src/main/resources/db/changelog/db.changelog-bootstrap.xml
-liquibase.changelogDatabaseName=EDU_AI_APP
-liquibase.changelogSchemaName=WEBAPP
-

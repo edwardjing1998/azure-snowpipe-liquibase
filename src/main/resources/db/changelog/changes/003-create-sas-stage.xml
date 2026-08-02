@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="sas-003-create-azure-sas-stage" author="edward"
+               runAlways="true" runOnChange="true">
+        <comment>Refresh the SAS-backed stage whenever the deployment workflow runs.</comment>
+        <sql splitStatements="false"><![CDATA[
+CREATE OR REPLACE STAGE EDU_AI_APP.STAGING.AZURE_BILL_LINE_SAS_STAGE
+  URL = 'azure://${azure.storage.account}.blob.core.windows.net/${azure.container}/${azure.blob.prefix}/'
+  CREDENTIALS = (AZURE_SAS_TOKEN = '${azure.sas.token}')
+  FILE_FORMAT = EDU_AI_APP.STAGING.BILL_LINE_SAS_CSV_FORMAT
+        ]]></sql>
+        <rollback>
+            <sql>DROP STAGE IF EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_SAS_STAGE</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

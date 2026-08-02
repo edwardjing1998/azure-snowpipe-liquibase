@@ -1,0 +1,38 @@
+name: 02 Manually Copy Azure CSV to Snowflake
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Build Snowflake connection
+        shell: bash
+        run: |
+          test -n "$SNOWFLAKE_ACCOUNT" || { echo "Missing SNOWFLAKE_ACCOUNT"; exit 1; }
+          test -n "$SNOWFLAKE_USER" || { echo "Missing SNOWFLAKE_USER"; exit 1; }
+          test -n "$SNOWFLAKE_PASSWORD" || { echo "Missing SNOWFLAKE_PASSWORD"; exit 1; }
+          echo "SNOWFLAKE_URL=jdbc:snowflake://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/?db=EDU_AI_APP&schema=WEBAPP&warehouse=GLOBAL_FINANCE_WAREHOUSE&role=ACCOUNTADMIN" >> "$GITHUB_ENV"
+
+      - name: Run COPY INTO and verify rows
+        run: |
+          mvn -B -ntp compile exec:java \
+            -Dexec.mainClass=com.edward.snowflake.ManualCopyMain
+

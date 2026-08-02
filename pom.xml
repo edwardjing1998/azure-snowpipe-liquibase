@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>com.edward.snowflake</groupId>
-    <artifactId>azure-snowpipe-liquibase</artifactId>
+    <artifactId>azure-sas-copy-demo</artifactId>
     <version>1.0.0</version>
 
     <properties>
@@ -16,11 +16,6 @@
     </properties>
 
     <dependencies>
-        <dependency>
-            <groupId>org.liquibase</groupId>
-            <artifactId>liquibase-core</artifactId>
-            <version>${liquibase.version}</version>
-        </dependency>
         <dependency>
             <groupId>net.snowflake</groupId>
             <artifactId>snowflake-jdbc</artifactId>
@@ -47,13 +42,12 @@
                     <username>${env.SNOWFLAKE_USER}</username>
                     <password>${env.SNOWFLAKE_PASSWORD}</password>
                     <driver>net.snowflake.client.jdbc.SnowflakeDriver</driver>
-                    <changeLogFile>${liquibase.changeLogFile}</changeLogFile>
+                    <changeLogFile>src/main/resources/db/changelog/db.changelog-master.xml</changeLogFile>
                     <changelogDatabaseName>EDU_AI_APP</changelogDatabaseName>
                     <changelogSchemaName>WEBAPP</changelogSchemaName>
                     <databaseChangeLogTableName>DATABASECHANGELOG</databaseChangeLogTableName>
                     <databaseChangeLogLockTableName>DATABASECHANGELOGLOCK</databaseChangeLogLockTableName>
                     <promptOnNonLocalDatabase>false</promptOnNonLocalDatabase>
-                    <propertyFileWillOverride>true</propertyFileWillOverride>
                 </configuration>
                 <dependencies>
                     <dependency>
