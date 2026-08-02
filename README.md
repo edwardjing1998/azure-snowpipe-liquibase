@@ -123,9 +123,14 @@ Phase 2:
 - assigns Blob Reader to the storage service principal;
 - assigns Queue Data Contributor to the notification service principal;
 - creates the filtered Event Grid subscription if missing;
-- validates Snowflake Blob list access;
 - creates `EDU_AI_APP.STAGING.BILL_LINE_AZURE_PIPE`;
+- retries Snowflake Blob-list validation while Azure RBAC propagates;
 - prints the Snowpipe status.
+
+The activation changelog runs before the end-to-end access validation. This
+ensures Liquibase records `azure-006-create-auto-ingest-pipe` even when Azure
+RBAC needs additional propagation time. A later validation failure means the
+pipe exists but Azure consent, role assignment, or networking still needs work.
 
 ## Upload a test file
 

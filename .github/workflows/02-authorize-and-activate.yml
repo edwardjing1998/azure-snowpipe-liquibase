@@ -57,11 +57,24 @@ jobs:
           NOTIFICATION_APP_OBJECT_ID: ${{ inputs.notification_app_object_id }}
         run: |
           set -euo pipefail
-          STORAGE_ID=$(az storage account show \
-            --resource-group "$AZURE_RESOURCE_GROUP" \
-            --name "$AZURE_STORAGE_ACCOUNT" \
-            --query id -o tsv)
+          test -n "$AZURE_RESOURCE_GROUP" || { echo "Missing AZURE_RESOURCE_GROUP"; exit 1; }
+          test -n "$AZURE_STORAGE_ACCOUNT" || { echo "Missing AZURE_STORAGE_ACCOUNT"; exit 1; }
+          test -n "$AZURE_CONTAINER" || { echo "Missing AZURE_CONTAINER"; exit 1; }
+          test -n "$AZURE_QUEUE" || { echo "Missing AZURE_QUEUE"; exit 1; }
+          test -n "$AZURE_BLOB_PREFIX" || { echo "Missing AZURE_BLOB_PREFIX"; exit 1; }
+          test -n "$STORAGE_APP_OBJECT_ID" || { echo "Missing storage app Object ID"; exit 1; }
+          test -n "$NOTIFICATION_APP_OBJECT_ID" || { echo "Missing notification app Object ID"; exit 1; }
+
+          SUBSCRIPTION_ID=$(az account show --query id --output tsv)
+          STORAGE_ID="/subscriptions/${SUBSCRIPTION_ID}/resourceGroups/${AZURE_RESOURCE_GROUP}/providers/Microsoft.Storage/storageAccounts/${AZURE_STORAGE_ACCOUNT}"
           QUEUE_ID="${STORAGE_ID}/queueServices/default/queues/${AZURE_QUEUE}"
+
+          # Avoid the Azure CLI 2.88 storage-account API discovery issue by
+          # checking the actual storage resource with an explicit supported API.
+          az rest \
+            --method get \
+            --url "https://management.azure.com${STORAGE_ID}?api-version=2025-08-01" \
+            --output none
 
           assign_role_if_missing() {
             local principal_id="$1"
@@ -114,7 +127,12 @@ jobs:
         run: |
           echo "SNOWFLAKE_URL=jdbc:snowflake://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/?db=${SNOWFLAKE_DATABASE}&schema=${SNOWFLAKE_CHANGELOG_SCHEMA}&warehouse=${SNOWFLAKE_WAREHOUSE}&role=${SNOWFLAKE_ROLE}" >> "$GITHUB_ENV"
 
-      - name: Wait for Azure role propagation
+      - name: Create auto-ingest Snowpipe
+        run: |
+          mvn -B -ntp liquibase:update \
+            -Dliquibase.changeLogFile=src/main/resources/db/changelog/db.changelog-activate.xml
+
+      - name: Validate deployment after Azure role propagation
         shell: bash
         run: |
           for attempt in 1 2 3 4 5 6; do
@@ -127,13 +145,3 @@ jobs:
           done
           echo "Azure permission validation did not succeed"
           exit 1
-
-      - name: Create auto-ingest Snowpipe
-        run: |
-          mvn -B -ntp liquibase:update \
-            -Dliquibase.changeLogFile=src/main/resources/db/changelog/db.changelog-activate.xml
-
-      - name: Validate activated deployment
-        run: |
-          mvn -B -ntp compile exec:java \
-            -Dexec.mainClass=com.edward.snowflake.ValidateDeploymentMain
