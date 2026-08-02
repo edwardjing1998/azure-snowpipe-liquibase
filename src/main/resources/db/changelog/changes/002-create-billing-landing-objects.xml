@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="azure-003-create-bill-line-landing" author="edward">
+        <sql splitStatements="false"><![CDATA[
+CREATE TABLE IF NOT EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_LANDING (
+  BILL_LINE_ID VARCHAR,
+  BILL_ID VARCHAR,
+  BILLING_ACCOUNT_TOKEN VARCHAR,
+  PRODUCT_ID VARCHAR,
+  SERVICE_ID VARCHAR,
+  CHARGE_TYPE_CODE VARCHAR,
+  BILLING_CYCLE_START DATE,
+  BILLING_CYCLE_END DATE,
+  CHARGE_DATE DATE,
+  QUANTITY NUMBER(18,4),
+  UNIT_PRICE NUMBER(18,4),
+  CHARGE_AMOUNT NUMBER(18,2),
+  TAX_AMOUNT NUMBER(18,2),
+  CREDIT_AMOUNT NUMBER(18,2),
+  NET_AMOUNT NUMBER(18,2),
+  CURRENCY_CODE VARCHAR(3),
+  CHARGE_STATUS VARCHAR,
+  SOURCE_UPDATED_AT TIMESTAMP_NTZ,
+  SOURCE_FILENAME VARCHAR,
+  SOURCE_ROW_NUMBER NUMBER,
+  INGESTED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP()
+)
+        ]]></sql>
+        <rollback>
+            <sql>DROP TABLE IF EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_LANDING</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="azure-004-create-bill-line-csv-format" author="edward">
+        <sql splitStatements="false"><![CDATA[
+CREATE FILE FORMAT IF NOT EXISTS EDU_AI_APP.STAGING.BILL_LINE_CSV_FORMAT
+  TYPE = CSV
+  SKIP_HEADER = 1
+  FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+  EMPTY_FIELD_AS_NULL = TRUE
+  NULL_IF = ('', 'NULL', 'null')
+  TRIM_SPACE = TRUE
+  ERROR_ON_COLUMN_COUNT_MISMATCH = TRUE
+  DATE_FORMAT = 'YYYY-MM-DD'
+  TIMESTAMP_FORMAT = 'YYYY-MM-DD HH24:MI:SS'
+        ]]></sql>
+        <rollback>
+            <sql>DROP FILE FORMAT IF EXISTS EDU_AI_APP.STAGING.BILL_LINE_CSV_FORMAT</sql>
+        </rollback>
+    </changeSet>
+
+    <changeSet id="azure-005-create-external-stage" author="edward">
+        <sql splitStatements="false"><![CDATA[
+CREATE STAGE IF NOT EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_STAGE
+  URL = 'azure://${azure.storage.account}.blob.core.windows.net/${azure.container}/${azure.blob.prefix}/'
+  STORAGE_INTEGRATION = AZURE_BLOB_STORAGE_INT
+  FILE_FORMAT = EDU_AI_APP.STAGING.BILL_LINE_CSV_FORMAT
+        ]]></sql>
+        <rollback>
+            <sql>DROP STAGE IF EXISTS EDU_AI_APP.STAGING.AZURE_BILL_LINE_STAGE</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

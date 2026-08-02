@@ -1,0 +1,88 @@
+name: 01 Bootstrap Snowflake Azure Integrations
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "pom.xml"
+      - "src/main/resources/db/changelog/db.changelog-bootstrap.xml"
+      - "src/main/resources/db/changelog/changes/001-create-azure-integrations.xml"
+      - "src/main/resources/db/changelog/changes/002-create-billing-landing-objects.xml"
+      - "src/main/java/com/edward/snowflake/IntegrationInfoMain.java"
+
+permissions:
+  contents: read
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  SNOWFLAKE_DATABASE: EDU_AI_APP
+  SNOWFLAKE_CHANGELOG_SCHEMA: WEBAPP
+  SNOWFLAKE_WAREHOUSE: GLOBAL_FINANCE_WAREHOUSE
+  SNOWFLAKE_ROLE: ACCOUNTADMIN
+  AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  AZURE_STORAGE_ACCOUNT: ${{ vars.AZURE_STORAGE_ACCOUNT }}
+  AZURE_CONTAINER: ${{ vars.AZURE_CONTAINER }}
+  AZURE_QUEUE: ${{ vars.AZURE_QUEUE }}
+  AZURE_BLOB_PREFIX: ${{ vars.AZURE_BLOB_PREFIX }}
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Validate configuration
+        shell: bash
+        run: |
+          test -n "$SNOWFLAKE_ACCOUNT" || { echo "Missing variable SNOWFLAKE_ACCOUNT"; exit 1; }
+          test -n "$SNOWFLAKE_USER" || { echo "Missing secret SNOWFLAKE_USER"; exit 1; }
+          test -n "$SNOWFLAKE_PASSWORD" || { echo "Missing secret SNOWFLAKE_PASSWORD"; exit 1; }
+          test -n "$AZURE_TENANT_ID" || { echo "Missing variable AZURE_TENANT_ID"; exit 1; }
+          test -n "$AZURE_STORAGE_ACCOUNT" || { echo "Missing variable AZURE_STORAGE_ACCOUNT"; exit 1; }
+          test -n "$AZURE_CONTAINER" || { echo "Missing variable AZURE_CONTAINER"; exit 1; }
+          test -n "$AZURE_QUEUE" || { echo "Missing variable AZURE_QUEUE"; exit 1; }
+          test -n "$AZURE_BLOB_PREFIX" || { echo "Missing variable AZURE_BLOB_PREFIX"; exit 1; }
+          echo "SNOWFLAKE_URL=jdbc:snowflake://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/?db=${SNOWFLAKE_DATABASE}&schema=${SNOWFLAKE_CHANGELOG_SCHEMA}&warehouse=${SNOWFLAKE_WAREHOUSE}&role=${SNOWFLAKE_ROLE}" >> "$GITHUB_ENV"
+
+      - name: Validate Liquibase changelog
+        run: |
+          mvn -B -ntp liquibase:validate \
+            -Dliquibase.changeLogFile=src/main/resources/db/changelog/db.changelog-bootstrap.xml \
+            -Dazure.tenant.id="$AZURE_TENANT_ID" \
+            -Dazure.storage.account="$AZURE_STORAGE_ACCOUNT" \
+            -Dazure.container="$AZURE_CONTAINER" \
+            -Dazure.queue="$AZURE_QUEUE" \
+            -Dazure.blob.prefix="$AZURE_BLOB_PREFIX"
+
+      - name: Create integrations and landing objects
+        run: |
+          mvn -B -ntp liquibase:update \
+            -Dliquibase.changeLogFile=src/main/resources/db/changelog/db.changelog-bootstrap.xml \
+            -Dazure.tenant.id="$AZURE_TENANT_ID" \
+            -Dazure.storage.account="$AZURE_STORAGE_ACCOUNT" \
+            -Dazure.container="$AZURE_CONTAINER" \
+            -Dazure.queue="$AZURE_QUEUE" \
+            -Dazure.blob.prefix="$AZURE_BLOB_PREFIX"
+
+      - name: Print consent checkpoint information
+        run: |
+          mvn -B -ntp compile exec:java \
+            -Dexec.mainClass=com.edward.snowflake.IntegrationInfoMain
+
+      - name: Upload consent information
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-consent-information
+          path: target/azure-consent-information.txt
+          if-no-files-found: error
+          retention-days: 7
+

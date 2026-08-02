@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        https://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="azure-006-create-auto-ingest-pipe" author="edward">
+        <sql splitStatements="false"><![CDATA[
+CREATE PIPE IF NOT EXISTS EDU_AI_APP.STAGING.BILL_LINE_AZURE_PIPE
+  AUTO_INGEST = TRUE
+  INTEGRATION = 'AZURE_SNOWPIPE_NOTIFICATION_INT'
+AS
+COPY INTO EDU_AI_APP.STAGING.AZURE_BILL_LINE_LANDING (
+  BILL_LINE_ID, BILL_ID, BILLING_ACCOUNT_TOKEN, PRODUCT_ID, SERVICE_ID,
+  CHARGE_TYPE_CODE, BILLING_CYCLE_START, BILLING_CYCLE_END, CHARGE_DATE,
+  QUANTITY, UNIT_PRICE, CHARGE_AMOUNT, TAX_AMOUNT, CREDIT_AMOUNT, NET_AMOUNT,
+  CURRENCY_CODE, CHARGE_STATUS, SOURCE_UPDATED_AT,
+  SOURCE_FILENAME, SOURCE_ROW_NUMBER
+)
+FROM (
+  SELECT
+    t.$1::VARCHAR, t.$2::VARCHAR, t.$3::VARCHAR, t.$4::VARCHAR,
+    t.$5::VARCHAR, t.$6::VARCHAR, TRY_TO_DATE(t.$7), TRY_TO_DATE(t.$8),
+    TRY_TO_DATE(t.$9), TRY_TO_DECIMAL(t.$10, 18, 4),
+    TRY_TO_DECIMAL(t.$11, 18, 4), TRY_TO_DECIMAL(t.$12, 18, 2),
+    TRY_TO_DECIMAL(t.$13, 18, 2), TRY_TO_DECIMAL(t.$14, 18, 2),
+    TRY_TO_DECIMAL(t.$15, 18, 2), t.$16::VARCHAR, t.$17::VARCHAR,
+    TRY_TO_TIMESTAMP_NTZ(t.$18), METADATA$FILENAME, METADATA$FILE_ROW_NUMBER
+  FROM @EDU_AI_APP.STAGING.AZURE_BILL_LINE_STAGE t
+)
+PATTERN = '.*[.]csv'
+ON_ERROR = 'CONTINUE'
+        ]]></sql>
+        <rollback>
+            <sql>DROP PIPE IF EXISTS EDU_AI_APP.STAGING.BILL_LINE_AZURE_PIPE</sql>
+        </rollback>
+    </changeSet>
+</databaseChangeLog>

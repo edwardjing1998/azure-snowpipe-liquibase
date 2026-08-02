@@ -1,0 +1,139 @@
+name: 02 Authorize Azure and Activate Snowpipe
+
+on:
+  workflow_dispatch:
+    inputs:
+      storage_app_object_id:
+        description: Object ID of the consented Snowflake storage Enterprise Application
+        required: true
+        type: string
+      notification_app_object_id:
+        description: Object ID of the consented Snowflake notification Enterprise Application
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  SNOWFLAKE_ACCOUNT: ${{ vars.SNOWFLAKE_ACCOUNT }}
+  SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+  SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+  SNOWFLAKE_DATABASE: EDU_AI_APP
+  SNOWFLAKE_CHANGELOG_SCHEMA: WEBAPP
+  SNOWFLAKE_WAREHOUSE: GLOBAL_FINANCE_WAREHOUSE
+  SNOWFLAKE_ROLE: ACCOUNTADMIN
+  AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+  AZURE_STORAGE_ACCOUNT: ${{ vars.AZURE_STORAGE_ACCOUNT }}
+  AZURE_CONTAINER: ${{ vars.AZURE_CONTAINER }}
+  AZURE_QUEUE: ${{ vars.AZURE_QUEUE }}
+  AZURE_BLOB_PREFIX: ${{ vars.AZURE_BLOB_PREFIX }}
+  AZURE_EVENT_SUBSCRIPTION: ${{ vars.AZURE_EVENT_SUBSCRIPTION }}
+
+jobs:
+  authorize-and-activate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Azure login with GitHub OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure Azure RBAC and Event Grid
+        shell: bash
+        env:
+          STORAGE_APP_OBJECT_ID: ${{ inputs.storage_app_object_id }}
+          NOTIFICATION_APP_OBJECT_ID: ${{ inputs.notification_app_object_id }}
+        run: |
+          set -euo pipefail
+          STORAGE_ID=$(az storage account show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$AZURE_STORAGE_ACCOUNT" \
+            --query id -o tsv)
+          QUEUE_ID="${STORAGE_ID}/queueServices/default/queues/${AZURE_QUEUE}"
+
+          assign_role_if_missing() {
+            local principal_id="$1"
+            local role_name="$2"
+            local scope="$3"
+            local count
+            count=$(az role assignment list \
+              --assignee "$principal_id" \
+              --role "$role_name" \
+              --scope "$scope" \
+              --query 'length(@)' -o tsv)
+            if [ "$count" = "0" ]; then
+              az role assignment create \
+                --assignee-object-id "$principal_id" \
+                --assignee-principal-type ServicePrincipal \
+                --role "$role_name" \
+                --scope "$scope" \
+                --only-show-errors
+            else
+              echo "$role_name already assigned"
+            fi
+          }
+
+          assign_role_if_missing "$STORAGE_APP_OBJECT_ID" \
+            "Storage Blob Data Reader" "$STORAGE_ID"
+          assign_role_if_missing "$NOTIFICATION_APP_OBJECT_ID" \
+            "Storage Queue Data Contributor" "$STORAGE_ID"
+
+          az extension add --name eventgrid --allow-preview true --upgrade --only-show-errors
+          EVENT_COUNT=$(az eventgrid event-subscription list \
+            --source-resource-id "$STORAGE_ID" \
+            --query "[?name=='${AZURE_EVENT_SUBSCRIPTION}'] | length(@)" -o tsv)
+          if [ "$EVENT_COUNT" = "0" ]; then
+            az eventgrid event-subscription create \
+              --name "$AZURE_EVENT_SUBSCRIPTION" \
+              --source-resource-id "$STORAGE_ID" \
+              --endpoint-type storagequeue \
+              --endpoint "$QUEUE_ID" \
+              --included-event-types Microsoft.Storage.BlobCreated \
+              --subject-begins-with "/blobServices/default/containers/${AZURE_CONTAINER}/blobs/${AZURE_BLOB_PREFIX}/" \
+              --advanced-filter data.api stringin CopyBlob PutBlob PutBlockList FlushWithClose SftpCommit \
+              --event-delivery-schema EventGridSchema \
+              --only-show-errors
+          else
+            echo "Event Grid subscription already exists"
+          fi
+
+      - name: Build Snowflake JDBC URL
+        shell: bash
+        run: |
+          echo "SNOWFLAKE_URL=jdbc:snowflake://${SNOWFLAKE_ACCOUNT}.snowflakecomputing.com/?db=${SNOWFLAKE_DATABASE}&schema=${SNOWFLAKE_CHANGELOG_SCHEMA}&warehouse=${SNOWFLAKE_WAREHOUSE}&role=${SNOWFLAKE_ROLE}" >> "$GITHUB_ENV"
+
+      - name: Wait for Azure role propagation
+        shell: bash
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if mvn -B -ntp compile exec:java \
+              -Dexec.mainClass=com.edward.snowflake.ValidateDeploymentMain; then
+              exit 0
+            fi
+            echo "Azure permissions are still propagating; retry $attempt/6"
+            sleep 20
+          done
+          echo "Azure permission validation did not succeed"
+          exit 1
+
+      - name: Create auto-ingest Snowpipe
+        run: |
+          mvn -B -ntp liquibase:update \
+            -Dliquibase.changeLogFile=src/main/resources/db/changelog/db.changelog-activate.xml
+
+      - name: Validate activated deployment
+        run: |
+          mvn -B -ntp compile exec:java \
+            -Dexec.mainClass=com.edward.snowflake.ValidateDeploymentMain
